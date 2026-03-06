@@ -15,6 +15,7 @@ MPI_Status status;
 
 // Whether to print the matrix when completed
 bool printResults = false;
+bool testSequential = false;
 
 // Print matrix function declaration
 void printMatrix(int matrix[N][N]);
@@ -49,6 +50,11 @@ int main(int argc, char **argv)
     // The subset of a matrix to be processed by workers
     int matrixSubset;
 
+    // Timer variables
+    double runTime;
+    clock_t begin, end;
+    clock_t beginSeq, endSeq;
+    
     // Initialize MPI environment
     MPI_Init(&argc, &argv);
 
@@ -62,16 +68,16 @@ int main(int argc, char **argv)
 
     // Initialize the product matrix to zero
     zeroMatrix(productMatrix);
-    zeroMatrix(sequentialProductMatrix);
+    testSequential ? (zeroMatrix(sequentialProductMatrix)) : (0);
 
     /* ---------- Manager Processor Code ---------- */
 
     if (processorRank == 0)
     {
         // Initialize a timer
-        clock_t begin = clock();
+        begin = clock();
 
-        printf("\nMultiplying a %dx%d matrix using %d processor(s).\n\n", N, N, numberOfProcessors);
+        printf("\nMultiplication of %dx%d matrices using %d processor(s) has been started.\n\n", N, N, numberOfProcessors);
 
         // Populate the matrices with values
         for (i = 0; i < N; i++)
@@ -116,17 +122,20 @@ int main(int argc, char **argv)
         }
 
         // Stop the timer
-        clock_t end = clock();
+        end = clock();
         
         // Sequential matrix multiplication for comparison
-        // Restart the timer for the sequential matrix multiplication
-        clock_t beginSeq = clock();
+        if (testSequential == true)
+        {
+            // Restart the timer for the sequential matrix multiplication
+            beginSeq = clock();
 
-        // Perform sequential matrix multiplication
-        muptiplyMatrix(matrix1, matrix2, sequentialProductMatrix);
-        
-        // Stop the timer
-        clock_t endSeq = clock();
+            // Perform sequential matrix multiplication
+            muptiplyMatrix(matrix1, matrix2, sequentialProductMatrix);
+            
+            // Stop the timer
+            endSeq = clock();
+        }
         
         // Optionally print matrix results
         if (printResults == true)
@@ -138,16 +147,19 @@ int main(int argc, char **argv)
             printf("Product Matrix:\n");
             printMatrix(productMatrix);            
         }
-        printf("Multiplication completed for %dx%d matrices using %d processor(s).\n\n", N, N, numberOfProcessors);
+        printf("Multiplication of %dx%d matrices using %d processor(s) has been completed.\n\n", N, N, numberOfProcessors);
 
         // Determine and print runtimes for parallel and sequential matrix multiplication
-        printf("Runtimes for parallel and sequential matrix multiplication:\n");
+        if (testSequential == true) 
+        {
+            printf("Runtimes for parallel and sequential matrix multiplication:\n");
 
-        double runTime = (double)(end - begin) / CLOCKS_PER_SEC;
-        printf("Parallel (s):   %f\n", runTime);
+            runTime = (double)(endSeq - beginSeq) / CLOCKS_PER_SEC;
+            printf("Sequential (s): %f\n", runTime);
+        }
         
-        runTime = (double)(endSeq - beginSeq) / CLOCKS_PER_SEC;
-        printf("Sequential (s): %f\n\n", runTime);
+        runTime = (double)(end - begin) / CLOCKS_PER_SEC;
+        printf("Parallel (s):   %f\n\n", runTime);
     }
 
     /* ---------- Worker Processor Code ---------- */
