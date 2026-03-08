@@ -7,7 +7,7 @@
 #include "mpi.h"
 
 // Size of the matrix (NxN)
-#define N 500
+#define N 2000
 #define MINRANGE 1
 #define MAXRANGE 10 
 
@@ -15,7 +15,7 @@ MPI_Status status;
 
 // Whether to print the matrix when completed
 bool printResults = false;
-bool testSequential = false;
+bool testSequential = true;
 
 // Print matrix function declaration
 void printMatrix(int matrix[N][N]);
@@ -214,9 +214,9 @@ void printMatrix(int matrix[N][N])
  */
 void multiplyMatrixChunk(int M, int matrix1[M][N], int matrix2[N][N], int productMatrix[M][N]) 
 {
-    for (k = 0; k < N; k++)
+    for (i = 0; i < M; i++)
     {
-        for (i = 0; i < M; i++)
+        for (k = 0; k < N; k++)
         {
             for (j = 0; j < N; j++)
             {
