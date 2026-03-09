@@ -8,7 +8,7 @@
 #include "mpi.h"
 
 // Size of the matrix (NxN)
-#define N 2000
+#define N 500
 #define MINRANGE 1
 #define MAXRANGE 10 
 
@@ -17,6 +17,8 @@ MPI_Status status;
 // Whether to print the matrix when completed
 bool printResults = false;
 bool testSequential = true;
+// run the parallel algorithm?
+bool testParallel = true;
 
 // Print matrix function declaration
 void printMatrix(float matrix[N][N]);
@@ -66,7 +68,11 @@ int main(int argc, char **argv)
             printResults = true;
         else if (strcmp(argv[arg], "--no-seq") == 0)
             testSequential = false;
+        else if (strcmp(argv[arg], "--no-par") == 0)
+            testParallel = false;
     }
+
+    // determine MPI rank/size before validating flags so every process can exit cleanly
 
     // Determine number of processors available
     MPI_Comm_size(MPI_COMM_WORLD, &numberOfProcessors);
@@ -76,20 +82,23 @@ int main(int argc, char **argv)
 
     numberOfWorkers = numberOfProcessors - 1;
 
+    if (!testParallel && !testSequential) {
+        if (processorRank == 0)
+            fprintf(stderr, "Error: cannot disable both parallel and sequential tests\n");
+        MPI_Finalize();
+        return 1;
+    }
+
     // Initialize the product matrix to zero
     zeroMatrix(productMatrix);
-    testSequential ? (zeroMatrix(sequentialProductMatrix)) : (0);
+    if (testSequential)
+        zeroMatrix(sequentialProductMatrix);
 
     /* ---------- Manager Processor Code ---------- */
 
     if (processorRank == 0)
     {
-        // Initialize a timer
-        begin = clock();
-
-        printf("\nMultiplication of %dx%d float matrices using %d processor(s) has been started.\n\n", N, N, numberOfProcessors);
-
-        // Populate the matrices with values
+        // Populate the matrices with values (needed for either test)
         for (i = 0; i < N; i++)
         {
             for (j = 0; j < N; j++)
@@ -99,40 +108,47 @@ int main(int argc, char **argv)
             }
         }
 
-        /* Send the matrix to the worker processes */
-        rows = N / numberOfWorkers;
-        matrixSubset = 0;
+        if (testParallel) {
+            // Initialize a timer
+            begin = clock();
 
-        // Iterate through all of the workers and assign work
-        for (destinationProcessor = 1; destinationProcessor <= numberOfWorkers; destinationProcessor++)
-        {
-            // Determine the subset of the matrix to send to the destination processor
-            MPI_Send(&matrixSubset, 1, MPI_INT, destinationProcessor, 1, MPI_COMM_WORLD);
+            printf("\nMultiplication of %dx%d float matrices using %d processor(s) has been started.\n\n", N, N, numberOfProcessors);
 
-            // Send the number of rows to process to the destination worker processor
-            MPI_Send(&rows, 1, MPI_INT, destinationProcessor, 1, MPI_COMM_WORLD);
+            /* Send the matrix to the worker processes */
+            rows = N / numberOfWorkers;
+            matrixSubset = 0;
 
-            // Send rows from matrix 1 to destination worker processor
-            MPI_Send(&matrix1[matrixSubset][0], rows * N, MPI_FLOAT, destinationProcessor, 1, MPI_COMM_WORLD);
+            // Iterate through all of the workers and assign work
+            for (destinationProcessor = 1; destinationProcessor <= numberOfWorkers; destinationProcessor++)
+            {
+                // Determine the subset of the matrix to send to the destination processor
+                MPI_Send(&matrixSubset, 1, MPI_INT, destinationProcessor, 1, MPI_COMM_WORLD);
 
-            // Send entire matrix 2 to destination worker processor
-            MPI_Send(&matrix2, N * N, MPI_FLOAT, destinationProcessor, 1, MPI_COMM_WORLD);
+                // Send the number of rows to process to the destination worker processor
+                MPI_Send(&rows, 1, MPI_INT, destinationProcessor, 1, MPI_COMM_WORLD);
 
-            // Determine the next chunk of data to send to the next processor
-            matrixSubset = matrixSubset + rows;
+                // Send rows from matrix 1 to destination worker processor
+                MPI_Send(&matrix1[matrixSubset][0], rows * N, MPI_FLOAT, destinationProcessor, 1, MPI_COMM_WORLD);
+
+                // Send entire matrix 2 to destination worker processor
+                MPI_Send(&matrix2, N * N, MPI_FLOAT, destinationProcessor, 1, MPI_COMM_WORLD);
+
+                // Determine the next chunk of data to send to the next processor
+                matrixSubset = matrixSubset + rows;
+            }
+
+            // Retrieve results from all workers processors
+            for (i = 1; i <= numberOfWorkers; i++)
+            {
+                sourceProcessor = i;
+                MPI_Recv(&matrixSubset, 1, MPI_INT, sourceProcessor, 2, MPI_COMM_WORLD, &status);
+                MPI_Recv(&rows, 1, MPI_INT, sourceProcessor, 2, MPI_COMM_WORLD, &status);
+                MPI_Recv(&productMatrix[matrixSubset][0], rows * N, MPI_FLOAT, sourceProcessor, 2, MPI_COMM_WORLD, &status);
+            }
+
+            // Stop the timer
+            end = clock();
         }
-
-        // Retrieve results from all workers processors
-        for (i = 1; i <= numberOfWorkers; i++)
-        {
-            sourceProcessor = i;
-            MPI_Recv(&matrixSubset, 1, MPI_INT, sourceProcessor, 2, MPI_COMM_WORLD, &status);
-            MPI_Recv(&rows, 1, MPI_INT, sourceProcessor, 2, MPI_COMM_WORLD, &status);
-            MPI_Recv(&productMatrix[matrixSubset][0], rows * N, MPI_FLOAT, sourceProcessor, 2, MPI_COMM_WORLD, &status);
-        }
-
-        // Stop the timer
-        end = clock();
         
         // Sequential matrix multiplication for comparison
         if (testSequential == true)
@@ -155,27 +171,43 @@ int main(int argc, char **argv)
             printf("Matrix 2:\n");
             printMatrix(matrix2);
             printf("Product Matrix:\n");
-            printMatrix(productMatrix);            
+            if (testParallel)
+                printMatrix(productMatrix);
+            else if (testSequential)
+                printMatrix(sequentialProductMatrix);
         }
-        printf("Multiplication of %dx%d float matrices using %d processor(s) has been completed.\n\n", N, N, numberOfProcessors);
+        if (testParallel)
+            printf("Multiplication of %dx%d float matrices using %d processor(s) has been completed.\n\n", N, N, numberOfProcessors);
+        else
+            printf("Sequential multiplication of %dx%d matrices completed.\n\n", N, N);
 
-        // Determine and print runtimes for parallel and sequential matrix multiplication
+        // Determine and print runtimes for whichever tests we ran
         if (testSequential == true) 
         {
-            printf("Runtimes for parallel and sequential matrix multiplication:\n");
+            if (testParallel)
+                printf("Runtimes for parallel and sequential matrix multiplication:\n");
+            else
+                printf("Runtime for sequential matrix multiplication:\n");
 
             runTime = (double)(endSeq - beginSeq) / CLOCKS_PER_SEC;
             printf("Sequential (s): %f\n", runTime);
         }
-        
-        runTime = (double)(end - begin) / CLOCKS_PER_SEC;
-        printf("Parallel (s):   %f\n\n", runTime);
+        if (testParallel)
+        {
+            runTime = (double)(end - begin) / CLOCKS_PER_SEC;
+            printf("Parallel (s):   %f\n\n", runTime);
+        }
     }
 
     /* ---------- Worker Processor Code ---------- */
 
     if (processorRank > 0)
     {
+        if (!testParallel) {
+            MPI_Finalize();
+            return 0;
+        }
+
         sourceProcessor = 0;
         MPI_Recv(&matrixSubset, 1, MPI_INT, sourceProcessor, 1, MPI_COMM_WORLD, &status);
         MPI_Recv(&rows, 1, MPI_INT, sourceProcessor, 1, MPI_COMM_WORLD, &status);

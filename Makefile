@@ -11,33 +11,21 @@ main_int: main_int.c
 main_float: main_float.c
 	$(CC) $(CFLAGS) -o main_float main_float.c
 
+# compute flags based on make variables
+PRINT_FLAG := $(if $(PRINT),--print)
+NOSEQ_FLAG := $(if $(NOSEQ),--no-seq)
+NOPAR_FLAG := $(if $(NOPAR),--no-par)
+FLAGS := $(PRINT_FLAG) $(NOSEQ_FLAG) $(NOPAR_FLAG)
+
 run_int: main_int
-	mpirun -np $(NUM_PROCESSES) ./main_int
+	mpirun -np $(NUM_PROCESSES) ./main_int $(FLAGS)
 
 run_float: main_float
-	mpirun -np $(NUM_PROCESSES) ./main_float
-
-run_int_print: main_int
-	mpirun -np $(NUM_PROCESSES) ./main_int --print
-
-run_float_print: main_float
-	mpirun -np $(NUM_PROCESSES) ./main_float --print
-
-run_int_no_seq: main_int
-	mpirun -np $(NUM_PROCESSES) ./main_int --no-seq
-
-run_float_no_seq: main_float
-	mpirun -np $(NUM_PROCESSES) ./main_float --no-seq
-
-run_int_print_no_seq: main_int
-	mpirun -np $(NUM_PROCESSES) ./main_int --print --no-seq
-
-run_float_print_no_seq: main_float
-	mpirun -np $(NUM_PROCESSES) ./main_float --print --no-seq
+	mpirun -np $(NUM_PROCESSES) ./main_float $(FLAGS)
 
 run_all: all run_int run_float
 
 clean:
 	rm -f $(TARGETS)
 
-.PHONY: all run_int run_float run_int_print run_float_print run_int_no_seq run_float_no_seq run_int_print_no_seq run_float_print_no_seq run_all clean
+.PHONY: all run_int run_float run_all clean
