@@ -8,10 +8,18 @@
 #include "mpi.h"
 
 // Size of the matrix (NxN)
-#define N 500
+#define N 1000
 #define MINRANGE 1
 #define MAXRANGE 10 
-
+#define ALGO_COUNT 6
+typedef enum {
+    ALGO_IJK,
+    ALGO_IKJ,
+    ALGO_JIK,
+    ALGO_JKI,
+    ALGO_KIJ,
+    ALGO_KJI
+} Algorithm;
 MPI_Status status;
 
 // Whether to print the matrix when completed
@@ -22,9 +30,10 @@ bool testParallel = true;
 
 // Print matrix function declaration
 void printMatrix(float matrix[N][N]);
-void multiplyMatrixChunk(int M, float matrix1[M][N], float matrix2[N][N], float productMatrix[M][N]);
-void muptiplyMatrix(float matrix1[N][N], float matrix2[N][N], float productMatrix[N][N]);
+void multiplyMatrixChunk(int M, float matrix1[M][N], float matrix2[N][N], float productMatrix[M][N], Algorithm algo);
+void multiplyMatrix(float matrix1[N][N], float matrix2[N][N], float productMatrix[N][N], Algorithm algo);
 void zeroMatrix(float matrix[N][N]);
+void printResultsTable(double seqTimes[ALGO_COUNT], double parTimes[ALGO_COUNT], bool testSequential, bool testParallel);
 
 // Define matrices
 float matrix1[N][N];
@@ -108,59 +117,50 @@ int main(int argc, char **argv)
             }
         }
 
+        double parTimes[ALGO_COUNT] = {0};
         if (testParallel) {
-            // Initialize a timer
-            begin = clock();
-
-            printf("\nMultiplication of %dx%d float matrices using %d processor(s) has been started.\n\n", N, N, numberOfProcessors);
-
-            /* Send the matrix to the worker processes */
+            printf("\nMultiplication of %dx%d float matrices using %d processor(s).\n", N, N, numberOfProcessors);
             rows = N / numberOfWorkers;
-            matrixSubset = 0;
 
-            // Iterate through all of the workers and assign work
-            for (destinationProcessor = 1; destinationProcessor <= numberOfWorkers; destinationProcessor++)
-            {
-                // Determine the subset of the matrix to send to the destination processor
-                MPI_Send(&matrixSubset, 1, MPI_INT, destinationProcessor, 1, MPI_COMM_WORLD);
+            for (int algo = 0; algo < ALGO_COUNT; algo++) {
+                matrixSubset = 0;
+                zeroMatrix(productMatrix);
+                begin = clock();
 
-                // Send the number of rows to process to the destination worker processor
-                MPI_Send(&rows, 1, MPI_INT, destinationProcessor, 1, MPI_COMM_WORLD);
+                for (destinationProcessor = 1; destinationProcessor <= numberOfWorkers; destinationProcessor++)
+                {
+                    MPI_Send(&matrixSubset, 1, MPI_INT, destinationProcessor, 1, MPI_COMM_WORLD);
+                    MPI_Send(&rows, 1, MPI_INT, destinationProcessor, 1, MPI_COMM_WORLD);
+                    MPI_Send(&algo, 1, MPI_INT, destinationProcessor, 1, MPI_COMM_WORLD);
+                    MPI_Send(&matrix1[matrixSubset][0], rows * N, MPI_FLOAT, destinationProcessor, 1, MPI_COMM_WORLD);
+                    MPI_Send(&matrix2, N * N, MPI_FLOAT, destinationProcessor, 1, MPI_COMM_WORLD);
+                    matrixSubset += rows;
+                }
 
-                // Send rows from matrix 1 to destination worker processor
-                MPI_Send(&matrix1[matrixSubset][0], rows * N, MPI_FLOAT, destinationProcessor, 1, MPI_COMM_WORLD);
+                for (i = 1; i <= numberOfWorkers; i++)
+                {
+                    sourceProcessor = i;
+                    MPI_Recv(&matrixSubset, 1, MPI_INT, sourceProcessor, 2, MPI_COMM_WORLD, &status);
+                    MPI_Recv(&rows, 1, MPI_INT, sourceProcessor, 2, MPI_COMM_WORLD, &status);
+                    MPI_Recv(&productMatrix[matrixSubset][0], rows * N, MPI_FLOAT, sourceProcessor, 2, MPI_COMM_WORLD, &status);
+                }
 
-                // Send entire matrix 2 to destination worker processor
-                MPI_Send(&matrix2, N * N, MPI_FLOAT, destinationProcessor, 1, MPI_COMM_WORLD);
-
-                // Determine the next chunk of data to send to the next processor
-                matrixSubset = matrixSubset + rows;
+                end = clock();
+                parTimes[algo] = (double)(end - begin) / CLOCKS_PER_SEC;
             }
-
-            // Retrieve results from all workers processors
-            for (i = 1; i <= numberOfWorkers; i++)
-            {
-                sourceProcessor = i;
-                MPI_Recv(&matrixSubset, 1, MPI_INT, sourceProcessor, 2, MPI_COMM_WORLD, &status);
-                MPI_Recv(&rows, 1, MPI_INT, sourceProcessor, 2, MPI_COMM_WORLD, &status);
-                MPI_Recv(&productMatrix[matrixSubset][0], rows * N, MPI_FLOAT, sourceProcessor, 2, MPI_COMM_WORLD, &status);
-            }
-
-            // Stop the timer
-            end = clock();
         }
         
         // Sequential matrix multiplication for comparison
+        double seqTimes[ALGO_COUNT] = {0};
         if (testSequential == true)
         {
-            // Restart the timer for the sequential matrix multiplication
-            beginSeq = clock();
-
-            // Perform sequential matrix multiplication
-            muptiplyMatrix(matrix1, matrix2, sequentialProductMatrix);
-            
-            // Stop the timer
-            endSeq = clock();
+            for (int algo = 0; algo < ALGO_COUNT; algo++) {
+                zeroMatrix(sequentialProductMatrix);  // Reset for each run
+                clock_t beginSeq = clock();
+                multiplyMatrix(matrix1, matrix2, sequentialProductMatrix, (Algorithm)algo);
+                clock_t endSeq = clock();
+                seqTimes[algo] = (double)(endSeq - beginSeq) / CLOCKS_PER_SEC;
+            }
         }
         
         // Optionally print matrix results
@@ -176,27 +176,9 @@ int main(int argc, char **argv)
             else if (testSequential)
                 printMatrix(sequentialProductMatrix);
         }
-        if (testParallel)
-            printf("Multiplication of %dx%d float matrices using %d processor(s) has been completed.\n\n", N, N, numberOfProcessors);
-        else
-            printf("Sequential multiplication of %dx%d matrices completed.\n\n", N, N);
-
-        // Determine and print runtimes for whichever tests we ran
-        if (testSequential == true) 
-        {
-            if (testParallel)
-                printf("Runtimes for parallel and sequential matrix multiplication:\n");
-            else
-                printf("Runtime for sequential matrix multiplication:\n");
-
-            runTime = (double)(endSeq - beginSeq) / CLOCKS_PER_SEC;
-            printf("Sequential (s): %f\n", runTime);
-        }
-        if (testParallel)
-        {
-            runTime = (double)(end - begin) / CLOCKS_PER_SEC;
-            printf("Parallel (s):   %f\n\n", runTime);
-        }
+        
+        // Print the results table
+        printResultsTable(seqTimes, parTimes, testSequential, testParallel);
     }
 
     /* ---------- Worker Processor Code ---------- */
@@ -208,19 +190,23 @@ int main(int argc, char **argv)
             return 0;
         }
 
-        sourceProcessor = 0;
-        MPI_Recv(&matrixSubset, 1, MPI_INT, sourceProcessor, 1, MPI_COMM_WORLD, &status);
-        MPI_Recv(&rows, 1, MPI_INT, sourceProcessor, 1, MPI_COMM_WORLD, &status);
-        MPI_Recv(&matrix1, rows * N, MPI_FLOAT, sourceProcessor, 1, MPI_COMM_WORLD, &status);
-        MPI_Recv(&matrix2, N * N, MPI_FLOAT, sourceProcessor, 1, MPI_COMM_WORLD, &status);
+        for (int algo = 0; algo < ALGO_COUNT; algo++) {
+            int algoId;
+            sourceProcessor = 0;
+            MPI_Recv(&matrixSubset, 1, MPI_INT, sourceProcessor, 1, MPI_COMM_WORLD, &status);
+            MPI_Recv(&rows, 1, MPI_INT, sourceProcessor, 1, MPI_COMM_WORLD, &status);
+            MPI_Recv(&algoId, 1, MPI_INT, sourceProcessor, 1, MPI_COMM_WORLD, &status);
+            MPI_Recv(&matrix1, rows * N, MPI_FLOAT, sourceProcessor, 1, MPI_COMM_WORLD, &status);
+            MPI_Recv(&matrix2, N * N, MPI_FLOAT, sourceProcessor, 1, MPI_COMM_WORLD, &status);
 
-        /* Perform matrix multiplication */
+            /* Perform matrix multiplication */
+            zeroMatrix(productMatrix);
+            multiplyMatrixChunk(rows, matrix1, matrix2, productMatrix, (Algorithm)algoId);
 
-        multiplyMatrixChunk(rows, matrix1, matrix2, productMatrix);
-
-        MPI_Send(&matrixSubset, 1, MPI_INT, 0, 2, MPI_COMM_WORLD);
-        MPI_Send(&rows, 1, MPI_INT, 0, 2, MPI_COMM_WORLD);
-        MPI_Send(&productMatrix, rows * N, MPI_FLOAT, 0, 2, MPI_COMM_WORLD);
+            MPI_Send(&matrixSubset, 1, MPI_INT, 0, 2, MPI_COMM_WORLD);
+            MPI_Send(&rows, 1, MPI_INT, 0, 2, MPI_COMM_WORLD);
+            MPI_Send(&productMatrix, rows * N, MPI_FLOAT, 0, 2, MPI_COMM_WORLD);
+        }
     }
 
     MPI_Finalize();
@@ -253,18 +239,47 @@ void printMatrix(float matrix[N][N])
  * @param matrix1 First matrix chunk
  * @param matrix2 Second matrix
  * @param productMatrix Product matrix
+ * @param algo Algorithm to use for multiplication
  */
-void multiplyMatrixChunk(int M, float matrix1[M][N], float matrix2[N][N], float productMatrix[M][N]) 
+void multiplyMatrixChunk(int M, float matrix1[M][N], float matrix2[N][N], float productMatrix[M][N], Algorithm algo) 
 {
-    for (i = 0; i < M; i++)
-    {
-        for (k = 0; k < N; k++)
-        {
+    switch (algo) {
+        case ALGO_IJK:
+            for (i = 0; i < M; i++)
+                for (j = 0; j < N; j++)
+                    for (k = 0; k < N; k++)
+                        productMatrix[i][k] += matrix1[i][j] * matrix2[j][k];
+            break;
+        case ALGO_IKJ:
+            for (i = 0; i < M; i++)
+                for (k = 0; k < N; k++)
+                    for (j = 0; j < N; j++)
+                        productMatrix[i][k] += matrix1[i][j] * matrix2[j][k];
+            break;
+        case ALGO_JIK:
             for (j = 0; j < N; j++)
-            {
-                productMatrix[i][k] = productMatrix[i][k] + matrix1[i][j] * matrix2[j][k];
-            }
-        }
+                for (i = 0; i < M; i++)
+                    for (k = 0; k < N; k++)
+                        productMatrix[i][k] += matrix1[i][j] * matrix2[j][k];
+            break;
+        case ALGO_JKI:
+            for (j = 0; j < N; j++)
+                for (k = 0; k < N; k++)
+                    for (i = 0; i < M; i++)
+                        productMatrix[i][k] += matrix1[i][j] * matrix2[j][k];
+            break;
+        case ALGO_KIJ:
+            for (k = 0; k < N; k++)
+                for (i = 0; i < M; i++)
+                    for (j = 0; j < N; j++)
+                        productMatrix[i][k] += matrix1[i][j] * matrix2[j][k];
+            break;
+        case ALGO_KJI:
+            for (k = 0; k < N; k++)
+                for (j = 0; j < N; j++)
+                    for (i = 0; i < M; i++)
+                        productMatrix[i][k] += matrix1[i][j] * matrix2[j][k];
+            break;
     }
 }
 
@@ -274,10 +289,11 @@ void multiplyMatrixChunk(int M, float matrix1[M][N], float matrix2[N][N], float 
  * @param matrix1 First matrix
  * @param matrix2 Second matrix
  * @param productMatrix Product matrix
+ * @param algo Algorithm to use for multiplication
  */
-void muptiplyMatrix(float matrix1[N][N], float matrix2[N][N], float productMatrix[N][N]) 
+void multiplyMatrix(float matrix1[N][N], float matrix2[N][N], float productMatrix[N][N], Algorithm algo) 
 {
-    multiplyMatrixChunk(N, matrix1, matrix2, productMatrix);
+    multiplyMatrixChunk(N, matrix1, matrix2, productMatrix, algo);
 }
 
 /**
@@ -292,6 +308,37 @@ void zeroMatrix(float matrix[N][N])
         for (j = 0; j < N; j++)
         {
             matrix[i][j] = 0.0f;
+        }
+    }
+}
+
+/**
+ * @brief Prints the execution times in a table format
+ * 
+ * @param seqTimes Array of sequential times for each algorithm
+ * @param parTimes Parallel times array (if tested)
+ * @param testSequential Whether sequential was tested
+ * @param testParallel Whether parallel was tested
+ */
+void printResultsTable(double seqTimes[ALGO_COUNT], double parTimes[ALGO_COUNT], bool testSequential, bool testParallel)
+{
+    const char* algoNames[ALGO_COUNT] = {"IJK", "IKJ", "JIK", "JKI", "KIJ", "KJI"};
+    
+    printf("\nExecution Times (seconds):\n");
+    printf("Algorithm | Sequential | Parallel\n");
+    printf("----------|------------|---------\n");
+    
+    for (int a = 0; a < 6; a++) {
+        printf("%-9s | ", algoNames[a]);
+        if (testSequential) {
+            printf("%10.6f | ", seqTimes[a]);
+        } else {
+            printf("     N/A    | ");
+        }
+        if (testParallel) {
+            printf("%7.6f\n", parTimes[a]);
+        } else {
+            printf("  N/A\n");
         }
     }
 }

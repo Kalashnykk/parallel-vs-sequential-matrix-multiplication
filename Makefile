@@ -1,7 +1,7 @@
 CC = mpicc
 CFLAGS = 
 TARGETS = main_int main_float
-NUM_PROCESSES = 3
+NP = 3
 
 all: $(TARGETS)
 
@@ -18,10 +18,10 @@ NOPAR_FLAG := $(if $(NOPAR),--no-par)
 FLAGS := $(PRINT_FLAG) $(NOSEQ_FLAG) $(NOPAR_FLAG)
 
 run_int: main_int
-	mpirun -np $(NUM_PROCESSES) ./main_int $(FLAGS)
+	mpirun -np $(NP) ./main_int $(FLAGS)
 
 run_float: main_float
-	mpirun -np $(NUM_PROCESSES) ./main_float $(FLAGS)
+	mpirun -np $(NP) ./main_float $(FLAGS)
 
 run_all: all run_int run_float
 
