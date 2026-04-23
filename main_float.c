@@ -11,7 +11,7 @@
 #define N 1000
 #define MINRANGE 1
 #define MAXRANGE 10 
-#define ALGO_COUNT 6
+#define ALGO_COUNT 1
 typedef enum {
     ALGO_IJK,
     ALGO_IKJ,
@@ -322,13 +322,15 @@ void zeroMatrix(float matrix[N][N])
  */
 void printResultsTable(double seqTimes[ALGO_COUNT], double parTimes[ALGO_COUNT], bool testSequential, bool testParallel)
 {
-    const char* algoNames[ALGO_COUNT] = {"IJK", "IKJ", "JIK", "JKI", "KIJ", "KJI"};
+    const char* algoNames[ALGO_COUNT] = {"IJK"
+        // , "IKJ" , "JIK", "JKI", "KIJ", "KJI"
+    };
     
     printf("\nExecution Times (seconds):\n");
     printf("Algorithm | Sequential | Parallel\n");
     printf("----------|------------|---------\n");
     
-    for (int a = 0; a < 6; a++) {
+    for (int a = 0; a < ALGO_COUNT; a++) {
         printf("%-9s | ", algoNames[a]);
         if (testSequential) {
             printf("%10.6f | ", seqTimes[a]);
