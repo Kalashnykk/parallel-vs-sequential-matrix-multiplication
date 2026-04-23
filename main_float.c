@@ -248,37 +248,37 @@ void multiplyMatrixChunk(int M, float matrix1[M][N], float matrix2[N][N], float 
             for (i = 0; i < M; i++)
                 for (j = 0; j < N; j++)
                     for (k = 0; k < N; k++)
-                        productMatrix[i][k] += matrix1[i][j] * matrix2[j][k];
+                        productMatrix[i][j] += matrix1[i][k] * matrix2[k][j];
             break;
         case ALGO_IKJ:
             for (i = 0; i < M; i++)
                 for (k = 0; k < N; k++)
                     for (j = 0; j < N; j++)
-                        productMatrix[i][k] += matrix1[i][j] * matrix2[j][k];
+                        productMatrix[i][j] += matrix1[i][k] * matrix2[k][j];
             break;
         case ALGO_JIK:
             for (j = 0; j < N; j++)
                 for (i = 0; i < M; i++)
                     for (k = 0; k < N; k++)
-                        productMatrix[i][k] += matrix1[i][j] * matrix2[j][k];
+                        productMatrix[i][j] += matrix1[i][k] * matrix2[k][j];
             break;
         case ALGO_JKI:
             for (j = 0; j < N; j++)
                 for (k = 0; k < N; k++)
                     for (i = 0; i < M; i++)
-                        productMatrix[i][k] += matrix1[i][j] * matrix2[j][k];
+                        productMatrix[i][j] += matrix1[i][k] * matrix2[k][j];
             break;
         case ALGO_KIJ:
             for (k = 0; k < N; k++)
                 for (i = 0; i < M; i++)
                     for (j = 0; j < N; j++)
-                        productMatrix[i][k] += matrix1[i][j] * matrix2[j][k];
+                        productMatrix[i][j] += matrix1[i][k] * matrix2[k][j];
             break;
         case ALGO_KJI:
             for (k = 0; k < N; k++)
                 for (j = 0; j < N; j++)
                     for (i = 0; i < M; i++)
-                        productMatrix[i][k] += matrix1[i][j] * matrix2[j][k];
+                        productMatrix[i][j] += matrix1[i][k] * matrix2[k][j];
             break;
     }
 }
