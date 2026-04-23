@@ -8,14 +8,14 @@
 #include "mpi.h"
 
 // Size of the matrix (NxN)
-#define N 2000
+#define N 1000
 #define MINRANGE 1
 #define MAXRANGE 10 
-#define ALGO_COUNT 1
+#define ALGO_COUNT 6
 
 typedef enum {
-    ALGO_IKJ,
     ALGO_IJK,
+    ALGO_IKJ,
     ALGO_JIK,
     ALGO_JKI,
     ALGO_KIJ,
@@ -327,16 +327,15 @@ void zeroMatrix(int matrix[N][N])
  */
 void printResultsTable(double seqTimes[ALGO_COUNT], double parTimes[ALGO_COUNT], bool testSequential, bool testParallel)
 {
-    const char* algoNames[ALGO_COUNT] = {"IKJ",
-        // "IJK", "IKJ", "JIK", "JKI", "KIJ", "KJI"
-    };
+    const char* algoNames[ALGO_COUNT] = {"IJK", "IKJ", "JIK", "JKI", "KIJ", "KJI"};
     
     printf("\nExecution Times (seconds):\n");
+    printf("---------------------------------\n");
     printf("Algorithm | Sequential | Parallel\n");
     printf("----------|------------|---------\n");
     
     for (int a = 0; a < ALGO_COUNT; a++) {
-        printf("%-9s | ", algoNames[a]);
+        printf("   %-6s | ", algoNames[a]);
         if (testSequential) {
             printf("%10.6f | ", seqTimes[a]);
         } else {
@@ -348,4 +347,6 @@ void printResultsTable(double seqTimes[ALGO_COUNT], double parTimes[ALGO_COUNT],
             printf("  N/A\n");
         }
     }
+
+    printf("---------------------------------\n");
 }
